@@ -1,0 +1,14 @@
+{{- if .Values.seed.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-seed-scripts
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+data:
+  # The desired monitors, rendered straight from values (seed.monitors).
+  monitors.json: {{ .Values.seed.monitors | toJson | quote }}
+  # The seeder, kept as a real file so Helm does not try to template its braces.
+  seed.js: |
+{{ .Files.Get "files/seed.js" | indent 4 }}
+{{- end }}

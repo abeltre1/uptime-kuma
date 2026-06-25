@@ -1,0 +1,18 @@
+apiVersion: v2
+name: uptime-kuma
+description: Self-hosted Uptime Kuma monitoring, with optional automated monitor seeding (no dashboard clicks needed).
+type: application
+# Chart version. Bump on chart changes.
+version: 0.1.0
+# The Uptime Kuma version this chart was written/tested against.
+appVersion: "2.4.0"
+home: https://github.com/louislam/uptime-kuma
+sources:
+  - https://github.com/louislam/uptime-kuma
+keywords:
+  - monitoring
+  - uptime
+  - status-page
+  - observability
+maintainers:
+  - name: abeltre1

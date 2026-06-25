@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+spec:
+  # Keep at 1. Uptime Kuma is single-instance: with SQLite the DB file cannot be
+  # shared, and even with an external DB each replica would run every monitor,
+  # producing duplicate checks and notifications.
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    # Recreate so the single ReadWriteOnce volume is released before the new pod
+    # starts (a RollingUpdate would deadlock on the PVC).
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "uptime-kuma.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "uptime-kuma.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "uptime-kuma.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: uptime-kuma
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          env:
+            {{- if .Values.externalDatabase.enabled }}
+            # External DB: setting UPTIME_KUMA_DB_TYPE also skips the first-run
+            # database-type wizard (server/setup-database.js).
+            - name: UPTIME_KUMA_DB_TYPE
+              value: {{ .Values.externalDatabase.type | quote }}
+            - name: UPTIME_KUMA_DB_HOSTNAME
+              value: {{ .Values.externalDatabase.host | quote }}
+            - name: UPTIME_KUMA_DB_PORT
+              value: {{ .Values.externalDatabase.port | quote }}
+            - name: UPTIME_KUMA_DB_NAME
+              value: {{ .Values.externalDatabase.database | quote }}
+            - name: UPTIME_KUMA_DB_USERNAME
+              value: {{ .Values.externalDatabase.username | quote }}
+            - name: UPTIME_KUMA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.dbSecretName" . }}
+                  key: {{ .Values.externalDatabase.existingSecretPasswordKey | default "db-password" }}
+            {{- else }}
+            # SQLite: this env makes the app initialise SQLite headlessly instead
+            # of waiting on the interactive database-type setup page.
+            - name: UPTIME_KUMA_DB_TYPE
+              value: "sqlite"
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "uptime-kuma.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
