@@ -1,0 +1,178 @@
+# Default values for the uptime-kuma chart.
+
+# Keep at 1 (see the comment in templates/deployment.yaml).
+replicaCount: 1
+
+image:
+  repository: louislam/uptime-kuma
+  # Pin to an exact version/digest for production (e.g. "2.4.0").
+  # The default "release" image runs as root; append "-rootless" to run as uid 1000
+  # (then set podSecurityContext.fsGroup and securityContext.runAsUser to 1000).
+  tag: "2"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+# Empty by default so the standard (root) image works without permission issues.
+# For the rootless image use, e.g.: { fsGroup: 1000 }
+podSecurityContext: {}
+# For the rootless image use, e.g.: { runAsNonRoot: true, runAsUser: 1000 }
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 3001
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # Uptime Kuma relies on WebSockets. nginx/traefik handle the Upgrade header by
+    # default; for long-lived sockets you may also want, on ingress-nginx:
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    # nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - host: uptime-kuma.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: uptime-kuma-tls
+    #   hosts:
+    #     - uptime-kuma.local
+
+persistence:
+  enabled: true
+  # Use an existing PVC instead of creating one:
+  # existingClaim: ""
+  # "-" forces an empty storageClassName (cluster default off); "" uses the default.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 4Gi
+  annotations: {}
+
+resources: {}
+  # requests:
+  #   cpu: 100m
+  #   memory: 256Mi
+  # limits:
+  #   cpu: "1"
+  #   memory: 512Mi
+
+# Probes hit the SPA root over HTTP. Boot + DB migration can take a while on first
+# start, so liveness is given a generous initial delay.
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 5
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Extra environment variables for the app container.
+extraEnv: []
+  # - name: UPTIME_KUMA_HOST
+  #   value: "0.0.0.0"
+
+# -----------------------------------------------------------------------------
+# Database
+# Default: embedded SQLite, stored on the PVC at /app/data.
+# Set externalDatabase.enabled=true to use an external MariaDB/MySQL instead.
+# Either way the relevant UPTIME_KUMA_DB_TYPE env is set, which also skips the
+# interactive first-run "choose a database" page.
+# -----------------------------------------------------------------------------
+externalDatabase:
+  enabled: false
+  type: "mariadb"
+  host: ""
+  port: 3306
+  database: "kuma"
+  username: "kuma"
+  # Provide the password inline (stored in a generated Secret)...
+  password: ""
+  # ...or reference an existing Secret (takes precedence over .password):
+  existingSecret: ""
+  existingSecretPasswordKey: "db-password"
+
+# -----------------------------------------------------------------------------
+# Monitor seeding — add monitors WITHOUT opening the dashboard.
+#
+# A post-install/post-upgrade Job reuses the Uptime Kuma image and talks to its
+# native Socket.io API to (1) create the first admin user on a fresh instance and
+# (2) create the monitors below. It is idempotent: a monitor whose "name" already
+# exists is skipped, so `helm upgrade` only adds new ones.
+#
+# Caveats (Uptime Kuma has no REST API / config-as-code, and the JSON backup
+# import was removed in 2.x — the Socket.io API is the supported path):
+#   * adminPassword must match the real admin password if the instance already
+#     exists, and must not be "Too weak" (needs upper/lower/number/symbol).
+#   * The admin account must NOT have 2FA enabled (the Job logs in headlessly).
+# -----------------------------------------------------------------------------
+seed:
+  enabled: true
+
+  # Admin account the Job creates on a fresh instance and logs in with.
+  # CHANGE THESE. For production, set existingAdminSecret instead.
+  adminUsername: "admin"
+  adminPassword: "ChangeMe-123!"
+  # Reference an existing Secret instead of the two values above:
+  existingAdminSecret: ""
+  existingAdminSecretUsernameKey: "username"
+  existingAdminSecretPasswordKey: "password"
+
+  # Job tuning.
+  connectRetries: 60          # attempts to reach the pod (x retry delay = max wait)
+  connectRetryDelaySeconds: 5
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+
+  # Monitors to ensure exist. Fields mirror the dashboard "Add Monitor" form;
+  # only "type" and "name" are required — sensible defaults fill the rest.
+  monitors:
+    - name: "Example HTTP"
+      type: "http"
+      url: "https://example.com"
+      interval: 60
+    # --- more examples (uncomment / edit) ---
+    # - name: "API health"
+    #   type: "http"
+    #   url: "https://api.example.com/health"
+    #   method: "GET"
+    #   accepted_statuscodes: ["200-299"]
+    #   interval: 30
+    #   maxretries: 2
+    #   retryInterval: 30
+    # - name: "Database TCP"
+    #   type: "port"
+    #   hostname: "postgres.db.svc.cluster.local"
+    #   port: 5432
+    #   interval: 60
+    # - name: "Ping gateway"
+    #   type: "ping"
+    #   hostname: "10.0.0.1"
+    #   interval: 60

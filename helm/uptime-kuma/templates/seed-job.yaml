@@ -1,0 +1,68 @@
+{{- if .Values.seed.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "uptime-kuma.fullname" . }}-seed
+  labels:
+    {{- include "uptime-kuma.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seed
+  annotations:
+    # Run after the Deployment/Service exist, on both install and upgrade.
+    # The ConfigMap and Secret are normal resources, so Helm applies them before
+    # this hook runs (and refreshes them on upgrade before re-seeding).
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    # Jobs are immutable, so delete the previous one before creating the new one.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.seed.backoffLimit | default 3 }}
+  activeDeadlineSeconds: {{ .Values.seed.activeDeadlineSeconds | default 900 }}
+  template:
+    metadata:
+      labels:
+        {{- include "uptime-kuma.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: seed
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seed
+          # Same image as the app => bundled, version-matched socket.io-client.
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /app
+          command: ["node", "/seed/seed.js"]
+          env:
+            - name: NODE_PATH
+              value: /app/node_modules
+            - name: KUMA_URL
+              value: "http://{{ include "uptime-kuma.fullname" . }}:{{ .Values.service.port }}"
+            - name: KUMA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.seedSecretName" . }}
+                  key: {{ .Values.seed.existingAdminSecretUsernameKey | default "username" }}
+            - name: KUMA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "uptime-kuma.seedSecretName" . }}
+                  key: {{ .Values.seed.existingAdminSecretPasswordKey | default "password" }}
+            - name: KUMA_CONNECT_RETRIES
+              value: {{ .Values.seed.connectRetries | default 60 | quote }}
+            - name: KUMA_CONNECT_RETRY_DELAY
+              value: {{ .Values.seed.connectRetryDelaySeconds | default 5 | quote }}
+          volumeMounts:
+            - name: seed-scripts
+              mountPath: /seed
+      volumes:
+        - name: seed-scripts
+          configMap:
+            name: {{ include "uptime-kuma.fullname" . }}-seed-scripts
+{{- end }}
