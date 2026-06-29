@@ -38,6 +38,7 @@ kubectl -n monitoring port-forward svc/kuma-uptime-kuma 3001:3001
 | Service (ClusterIP) | Exposes the app on `service.port` (3001) |
 | PersistentVolumeClaim | `/app/data` (SQLite DB, uploads, TLS certs) |
 | Ingress *(optional)* | External access (WebSocket-friendly) |
+| Route *(optional)* | External access on OpenShift (`route.openshift.io/v1`) |
 | ConfigMap + Secret *(seeding)* | The monitor list + admin credentials |
 | Job *(seeding, Helm hook)* | Creates the admin user + monitors via the API |
 
@@ -121,11 +122,34 @@ same field name the *Add Monitor* form uses (e.g. `keyword`, `hostname`, `port`,
   delete existing ones (idempotent by name).
 - Disable it entirely with `seed.enabled=false` and configure via the UI.
 
-## Ingress / WebSockets
+## Exposing the service
 
-Uptime Kuma uses WebSockets for live updates. ingress-nginx and Traefik pass the
-`Upgrade` header by default. For long-lived connections you may want longer
-proxy timeouts (see commented annotations in `values.yaml`).
+Pick whichever fits your platform (both are off by default):
+
+- **Ingress** (plain Kubernetes) — `ingress.enabled=true`.
+- **OpenShift Route** (`route.openshift.io/v1`) — `route.enabled=true`. The
+  HAProxy router passes WebSocket upgrades for edge/passthrough routes, so live
+  updates work.
+
+```yaml
+route:
+  enabled: true
+  # host: uptime-kuma.apps.my-cluster.example.com   # omit to let OpenShift assign one
+  tls:
+    enabled: true
+    termination: edge                 # edge | passthrough | reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+```
+
+```bash
+oc get route kuma-uptime-kuma -o jsonpath='{.spec.host}{"\n"}'
+```
+
+### WebSockets
+
+Uptime Kuma uses WebSockets for live updates. ingress-nginx, Traefik, and the
+OpenShift router pass the `Upgrade` header by default. For long-lived connections
+you may want longer proxy timeouts (see commented annotations in `values.yaml`).
 
 ## Validate locally
 
