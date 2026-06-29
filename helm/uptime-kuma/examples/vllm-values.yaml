@@ -64,6 +64,7 @@ seed:
       description: "vLLM inference status"
       theme: "auto"
       showPoweredBy: true
+      # logo: "https://mycompany.com/atlas.png"   # URL or data:image/png;base64,... (default: Kuma icon)
       groups:
         - name: "Inference"
           monitors:

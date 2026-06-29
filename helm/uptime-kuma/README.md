@@ -130,6 +130,7 @@ seed:
     - slug: "atlas"            # served at /status/atlas
       title: "Atlas"
       theme: auto              # auto | light | dark
+      logo: "https://mycompany.com/atlas.png"   # optional; see "Logos & branding"
       groups:
         - name: "Inference"
           monitors: ["vllm"]   # names from seed.monitors
@@ -149,6 +150,55 @@ monitor name is skipped with a warning rather than failing the Job.
 - Re-running `helm upgrade` only **adds** new monitors; it does not update or
   delete existing ones (idempotent by name).
 - Disable it entirely with `seed.enabled=false` and configure via the UI.
+
+## Logos & branding
+
+There are two separate logos.
+
+**1. Per-status-page logo** (the icon at the top of `/status/<slug>`). Set
+`seed.statusPages[].logo` to either a URL (stored as-is) or a
+`data:image/png;base64,...` string (PNG only — written to `/app/data/upload` on
+the PVC and served same-origin from `/upload`). For air-gapped clusters prefer
+the data-URI form, since a remote URL only renders if the *viewer's* browser can
+reach it.
+
+```yaml
+seed:
+  statusPages:
+    - slug: "atlas"
+      title: "Atlas"
+      logo: "https://mycompany.com/atlas.png"   # or "data:image/png;base64,iVBORw0K..."
+      groups: [...]
+```
+
+**2. App-wide logo + favicon** (the nav-bar mark and browser-tab icon, baked into
+the image under `/app/dist`). Two ways:
+
+- *Mount over the files (no rebuild)* — create a ConfigMap with your assets and
+  enable `branding`:
+  ```bash
+  kubectl -n monitoring create configmap kuma-branding \
+    --from-file=icon.svg --from-file=favicon.ico \
+    --from-file=apple-touch-icon.png \
+    --from-file=icon-192x192.png --from-file=icon-512x512.png
+  ```
+  ```yaml
+  branding:
+    enabled: true
+    existingConfigMap: kuma-branding
+    # files: [icon.svg, favicon.ico, apple-touch-icon.png, icon-192x192.png, icon-512x512.png]
+  ```
+  Each listed file is overlaid onto `/app/dist/<file>` via a `subPath` mount.
+  Caveat: `/app/dist` is served by `express-static-gzip`, so a precompressed
+  `icon.svg.br/.gz` in the image can shadow a mounted `icon.svg`; subPath mounts
+  also need a pod restart to pick up ConfigMap changes.
+
+- *Custom image (most reliable)* — see `examples/Dockerfile.branding`; it copies
+  your assets into `/app/dist` and removes the precompressed shadows, then you set
+  `image.repository`/`image.tag` to your built image.
+
+Uptime Kuma is MIT-licensed, so rebranding your own deployment is fine — just
+don't present it as the official project.
 
 ## Exposing the service
 

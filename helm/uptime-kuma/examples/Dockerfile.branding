@@ -1,0 +1,31 @@
+# Custom-image branding for Uptime Kuma — the most reliable way to replace the
+# APP-WIDE logo + favicon. It rebuilds the served assets under /app/dist and
+# removes any precompressed variants that could otherwise shadow your SVG (the
+# runtime file-mount approach in values.yaml `branding` can hit that shadowing).
+#
+# 1. Put your replacement assets next to this Dockerfile (any you omit keep the
+#    stock icon). Recommended sizes: icon.svg (vector), favicon.ico,
+#    apple-touch-icon.png (180x180), icon-192x192.png, icon-512x512.png.
+# 2. Build & push:
+#      docker build -f examples/Dockerfile.branding \
+#        -t registry.mycompany.com/uptime-kuma:branded .
+#      docker push registry.mycompany.com/uptime-kuma:branded
+# 3. Point the chart at it:
+#      helm upgrade --install kuma ./helm/uptime-kuma -n monitoring \
+#        --set image.repository=registry.mycompany.com/uptime-kuma \
+#        --set image.tag=branded
+#
+# Pin a digest/exact tag (e.g. louislam/uptime-kuma:2.4.0) for reproducibility.
+FROM louislam/uptime-kuma:2
+
+# Overlay the served assets. Each COPY replaces one file under /app/dist.
+COPY icon.svg              /app/dist/icon.svg
+COPY favicon.ico           /app/dist/favicon.ico
+COPY apple-touch-icon.png  /app/dist/apple-touch-icon.png
+COPY icon-192x192.png      /app/dist/icon-192x192.png
+COPY icon-512x512.png      /app/dist/icon-512x512.png
+
+# Drop any precompressed copies so the originals above are what gets served
+# (express-static-gzip prefers .br/.gz when present). Safe if they don't exist.
+RUN rm -f /app/dist/icon.svg.br /app/dist/icon.svg.gz \
+          /app/dist/favicon.ico.br /app/dist/favicon.ico.gz

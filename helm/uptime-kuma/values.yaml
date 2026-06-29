@@ -202,6 +202,7 @@ seed:
     #   description: ""               # optional, markdown
     #   theme: "auto"                 # auto | light | dark
     #   showPoweredBy: true
+    #   logo: ""                      # per-page logo: a URL, or a data:image/png;base64,... string (default: Kuma icon)
     #   groups:
     #     - name: "Services"
     #       monitors:
@@ -209,3 +210,32 @@ seed:
     #     - name: "Inference"
     #       monitors:
     #         - "vllm"                # e.g. your model-serving monitor
+
+# -----------------------------------------------------------------------------
+# Branding — replace the APP-WIDE logo + favicon (the nav-bar mark and browser-tab
+# icon, baked into the image under /app/dist). This overlays your own files at
+# runtime from a ConfigMap you create — no image rebuild. (For a per-status-page
+# logo, use seed.statusPages[].logo instead.)
+#
+# Create the ConfigMap first; the keys MUST be the served filenames:
+#   kubectl -n <ns> create configmap kuma-branding \
+#     --from-file=icon.svg \
+#     --from-file=favicon.ico \
+#     --from-file=apple-touch-icon.png \
+#     --from-file=icon-192x192.png \
+#     --from-file=icon-512x512.png
+#
+# Caveat: /app/dist is served by express-static-gzip (brotli/gzip). If the image
+# ships a precompressed icon.svg.br/.gz it can shadow a mounted icon.svg. If your
+# SVG won't update, use the custom-image approach (examples/Dockerfile.branding).
+# subPath mounts also require a pod restart to pick up ConfigMap changes.
+# -----------------------------------------------------------------------------
+branding:
+  enabled: false
+  existingConfigMap: ""           # ConfigMap holding the replacement assets (required when enabled)
+  files:                          # which keys to overlay onto /app/dist/<file>
+    - icon.svg
+    - favicon.ico
+    - apple-touch-icon.png
+    - icon-192x192.png
+    - icon-512x512.png
