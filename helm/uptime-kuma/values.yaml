@@ -52,6 +52,20 @@ ingress:
     #   hosts:
     #     - uptime-kuma.local
 
+# OpenShift Route (route.openshift.io/v1). Use this instead of ingress on
+# OpenShift/OKD. The HAProxy router passes WebSocket upgrades for edge/passthrough
+# routes, so Uptime Kuma's live updates work. Leave disabled on plain Kubernetes.
+route:
+  enabled: false
+  # host: ""                 # empty => OpenShift generates <name>-<namespace>.<apps-domain>
+  annotations: {}
+  wildcardPolicy: None       # None | Subdomain
+  tls:
+    enabled: true
+    termination: edge        # edge | passthrough | reencrypt
+    # Redirect sends http -> https; use None/Allow to permit plain http.
+    insecureEdgeTerminationPolicy: Redirect
+
 persistence:
   enabled: true
   # Use an existing PVC instead of creating one:
