@@ -190,3 +190,22 @@ seed:
     #   type: "ping"
     #   hostname: "10.0.0.1"
     #   interval: 60
+
+  # Status pages to ensure exist (the /status/<slug> pages). Idempotent by slug:
+  # re-running helm upgrade updates the page's config, groups, and monitor list.
+  # Each group's "monitors" are referenced by the monitor NAME (must match a name
+  # under seed.monitors above, or a monitor that already exists). Required per
+  # page: slug (lowercase, a-z 0-9 -, no consecutive dashes) and title.
+  statusPages: []
+    # - slug: "atlas"                 # served at /status/atlas
+    #   title: "Atlas"
+    #   description: ""               # optional, markdown
+    #   theme: "auto"                 # auto | light | dark
+    #   showPoweredBy: true
+    #   groups:
+    #     - name: "Services"
+    #       monitors:
+    #         - "Example HTTP"        # a name from seed.monitors
+    #     - name: "Inference"
+    #       monitors:
+    #         - "vllm"                # e.g. your model-serving monitor

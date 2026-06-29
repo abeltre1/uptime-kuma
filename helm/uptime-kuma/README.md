@@ -77,7 +77,8 @@ dependencies, no version-mismatch risk). On `helm install`/`helm upgrade` it:
 1. creates the first **admin user** if the instance is brand new,
 2. logs in,
 3. creates every monitor in `seed.monitors` that doesn't already exist
-   (idempotent — matched by `name`).
+   (idempotent — matched by `name`),
+4. creates/updates every **status page** in `seed.statusPages` (see below).
 
 List monitors in `values.yaml`; fields mirror the dashboard's *Add Monitor* form,
 and only `type` + `name` are required:
@@ -112,6 +113,33 @@ same field name the *Add Monitor* form uses (e.g. `keyword`, `hostname`, `port`,
 > "Models to monitor": if you mean LLM/API endpoints, monitor them as `http`
 > monitors against their health/inference URL (optionally `keyword` or
 > `json-query` to assert on the response body). It's the same mechanism.
+
+### Status pages
+
+The seeder can also create the **`/status/<slug>`** pages (the public dashboards),
+with groups and the monitors assigned to them — no clicking through *Add New
+Status Page*. List them under `seed.statusPages`; each group's `monitors` are
+referenced by **monitor name** (resolved to ids automatically), so the monitors
+must be in `seed.monitors` or already exist:
+
+```yaml
+seed:
+  monitors:
+    - { name: "vllm", type: http, url: "http://vllm.default.svc:8000/health", interval: 30 }
+  statusPages:
+    - slug: "atlas"            # served at /status/atlas
+      title: "Atlas"
+      theme: auto              # auto | light | dark
+      groups:
+        - name: "Inference"
+          monitors: ["vllm"]   # names from seed.monitors
+```
+
+This runs `addStatusPage(title, slug)` then `saveStatusPage(...)` over the same
+Socket.io API. It's **idempotent by slug**: re-running `helm upgrade` updates the
+page's config, groups, and monitor list (unlike monitors, which are only added).
+Slugs are lowercased and must match `^[a-z0-9]+(?:-[a-z0-9]+)*$`. An unknown
+monitor name is skipped with a warning rather than failing the Job.
 
 ### Seeding caveats
 
