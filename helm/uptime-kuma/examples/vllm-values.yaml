@@ -1,0 +1,71 @@
+# Example: deploy Uptime Kuma and monitor a vLLM inference server, with an
+# "atlas" status page (served at /status/atlas).
+#
+# Usage:
+#   helm upgrade --install kuma ./helm/uptime-kuma -n monitoring --create-namespace \
+#     -f helm/uptime-kuma/examples/vllm-values.yaml \
+#     --set seed.adminPassword='ChangeMe-Strong!23'
+#
+# Find the UI URL (OpenShift):
+#   oc -n monitoring get route kuma-uptime-kuma -o jsonpath='{.spec.host}{"\n"}'
+# The public status page is then at  https://<that-host>/status/atlas
+
+# --- Expose the Uptime Kuma UI on OpenShift -----------------------------------
+# (This Route is for the Kuma dashboard itself; it is unrelated to the vLLM
+#  target URLs below, which are reached directly over the network.)
+route:
+  enabled: true
+  # host: kuma.apps.mycompany.com        # omit to let OpenShift assign one
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# --- Seed the vLLM monitors + status page -------------------------------------
+seed:
+  enabled: true
+  adminUsername: "admin"
+  # Override this — do NOT ship a real password in values:
+  #   --set seed.adminPassword='...'   (or use seed.existingAdminSecret)
+  # Must not be "Too weak" (needs upper/lower/number/symbol).
+  adminPassword: "ChangeMe-Strong!23"
+
+  monitors:
+    # vLLM liveness: GET /health returns 200 (empty body) once the server is up.
+    # Unauthenticated, so it is the most reliable up/down signal.
+    - name: "vllm"
+      type: "http"
+      url: "https://vllm.apps.mycompany.com/health"
+      method: "GET"
+      accepted_statuscodes: ["200-299"]
+      interval: 30
+      maxretries: 2
+      retryInterval: 30
+      # expiryNotification: true     # also alert before the TLS certificate expires
+      # ignoreTls: true              # if the route uses an internal / self-signed CA
+      # headers: '{"Authorization": "Bearer YOUR_VLLM_API_KEY"}'   # only if started with --api-key
+
+    # vLLM readiness: GET /v1/models lists the served model(s). The keyword
+    # asserts the body is actually a model list (OpenAI-compatible response),
+    # not just any 200. vLLM emits compact JSON: {"object":"list","data":[...]}.
+    - name: "vllm-models"
+      type: "keyword"
+      url: "https://vllm.apps.mycompany.com/v1/models"
+      keyword: '"object":"list"'     # or set to your served model id, e.g. meta-llama/Llama-3.1-8B
+      method: "GET"
+      accepted_statuscodes: ["200-299"]
+      interval: 60
+      # ignoreTls: true
+      # headers: '{"Authorization": "Bearer YOUR_VLLM_API_KEY"}'   # /v1/* often requires the API key
+
+  statusPages:
+    - slug: "atlas"                  # served at /status/atlas
+      title: "Atlas"
+      description: "vLLM inference status"
+      theme: "auto"
+      showPoweredBy: true
+      groups:
+        - name: "Inference"
+          monitors:
+            - "vllm"
+            - "vllm-models"
