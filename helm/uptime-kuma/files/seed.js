@@ -195,8 +195,10 @@ async function seedStatusPages(socket, pages, monitorIdByName) {
         if (!exists) {
             await emit(socket, "addStatusPage", sp.title, slug);
         }
-        // imgDataUrl = "" -> no custom logo (keeps the default icon).
-        await emit(socket, "saveStatusPage", slug, config, "", publicGroupList);
+        // Optional per-page logo. A plain URL is stored as-is; a "data:image/png;base64,..."
+        // string is written to /app/data/upload and served from /upload. "" = default icon.
+        const imgDataUrl = typeof sp.logo === "string" ? sp.logo : "";
+        await emit(socket, "saveStatusPage", slug, config, imgDataUrl, publicGroupList);
 
         const monitorCount = publicGroupList.reduce((n, g) => n + g.monitorList.length, 0);
         if (exists) {

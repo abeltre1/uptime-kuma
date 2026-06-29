@@ -1,3 +1,6 @@
+{{- if and .Values.branding.enabled (not .Values.branding.existingConfigMap) }}
+{{- fail "branding.enabled is true but branding.existingConfigMap is empty — create a ConfigMap with your logo/favicon files and set branding.existingConfigMap to its name." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -92,6 +95,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            {{- if and .Values.branding.enabled .Values.branding.existingConfigMap }}
+            {{- range .Values.branding.files }}
+            # Overlay each branding asset onto its served file under /app/dist.
+            - name: branding
+              mountPath: /app/dist/{{ . }}
+              subPath: {{ . }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -100,6 +112,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if and .Values.branding.enabled .Values.branding.existingConfigMap }}
+        - name: branding
+          configMap:
+            name: {{ .Values.branding.existingConfigMap }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
