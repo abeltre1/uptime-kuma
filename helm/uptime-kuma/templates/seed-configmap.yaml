@@ -8,6 +8,8 @@ metadata:
 data:
   # The desired monitors, rendered straight from values (seed.monitors).
   monitors.json: {{ .Values.seed.monitors | toJson | quote }}
+  # The desired status pages (/status/<slug>), rendered from values (seed.statusPages).
+  status-pages.json: {{ .Values.seed.statusPages | default list | toJson | quote }}
   # The seeder, kept as a real file so Helm does not try to template its braces.
   seed.js: |
 {{ .Files.Get "files/seed.js" | indent 4 }}
