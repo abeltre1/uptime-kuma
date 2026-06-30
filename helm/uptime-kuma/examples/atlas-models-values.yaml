@@ -1,0 +1,102 @@
+# Example: reproduce the "Atlas" model-serving status page — Prefect health plus
+# LLM endpoints, embeddings, and cross-encoders, grouped exactly as shown in the
+# dashboard — entirely from seed config (no clicking through the UI).
+#
+# Check strategy (the default here): each model is a KEYWORD monitor against an
+# OpenAI-compatible gateway's /v1/models, asserting that the model id is listed
+# (i.e. the model is being served). It's lightweight and reproduces per-model
+# rows. Swap in per-model URLs, or a POST inference check, if that fits better.
+#
+# EDIT THESE before deploying (used by the YAML anchors below):
+#   - gateway that serves /v1/models : llm-gateway.apps.mycompany.com
+#   - Prefect server (/api/health)   : prefect.apps.mycompany.com
+# If /v1/models needs an API key, uncomment the `headers` lines.
+#
+# Usage:
+#   helm upgrade --install kuma ./helm/uptime-kuma -n monitoring --create-namespace \
+#     -f helm/uptime-kuma/examples/atlas-models-values.yaml \
+#     --set seed.adminPassword='ChangeMe-Strong!23'
+
+route:
+  enabled: true
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# Set each endpoint once via an anchor. The leading-underscore key is ignored by
+# the chart; only the resolved monitor `url`s matter.
+_endpoints:
+  models: &models "https://llm-gateway.apps.mycompany.com/v1/models"
+  prefect: &prefect "https://prefect.apps.mycompany.com/api/health"
+
+seed:
+  enabled: true
+  adminUsername: "admin"
+  adminPassword: "ChangeMe-Strong!23"   # override: --set seed.adminPassword=...  (or seed.existingAdminSecret)
+
+  monitors:
+    # --- Other ---
+    - name: "Prefect Orchestration Health"
+      type: "http"
+      url: *prefect
+      accepted_statuscodes: ["200-299"]
+      interval: 60
+      maxretries: 2
+      retryInterval: 60
+
+    # --- Endpoints (LLMs) ---
+    # keyword asserts the model id appears in the gateway's /v1/models response.
+    # Uncomment headers on any monitor if the gateway requires an API key:
+    #   headers: '{"Authorization": "Bearer YOUR_GATEWAY_API_KEY"}'
+    - { name: "google/gemma-4-31B-it",                     type: keyword, url: *models, keyword: "google/gemma-4-31B-it",                     accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "meta-llama/Llama-3.1-8B-Instruct",          type: keyword, url: *models, keyword: "meta-llama/Llama-3.1-8B-Instruct",          accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "meta-llama/Llama-3.2-11B-Vision-Instruct",  type: keyword, url: *models, keyword: "meta-llama/Llama-3.2-11B-Vision-Instruct",  accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "meta-llama/Llama-3.3-70B-Instruct",         type: keyword, url: *models, keyword: "meta-llama/Llama-3.3-70B-Instruct",         accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "meta-llama/Llama-4-Scout-17B-16E-Instruct", type: keyword, url: *models, keyword: "meta-llama/Llama-4-Scout-17B-16E-Instruct", accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "mistral/devstral-2-123B",                   type: keyword, url: *models, keyword: "mistral/devstral-2-123B",                   accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "openai/gpt-oss-120b",                       type: keyword, url: *models, keyword: "openai/gpt-oss-120b",                       accepted_statuscodes: ["200-299"], interval: 60 }
+
+    # --- Embeddings ---
+    - { name: "intfloat/multilingual-e5-large", type: keyword, url: *models, keyword: "intfloat/multilingual-e5-large", accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "intfloat/multilingual-e5-small", type: keyword, url: *models, keyword: "intfloat/multilingual-e5-small", accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "llmrails/ember-v1",              type: keyword, url: *models, keyword: "llmrails/ember-v1",              accepted_statuscodes: ["200-299"], interval: 60 }
+
+    # --- Cross Encoders (rerankers) ---
+    # NOTE: rerankers may be served by a different API (e.g. /rerank) rather than
+    # listed in /v1/models — adjust url/keyword to match your gateway. The keyword
+    # drops the "dev/" display prefix so it substring-matches the served id.
+    - { name: "dev/BAAI/bge-reranker-v2-m3",                type: keyword, url: *models, keyword: "BAAI/bge-reranker-v2-m3",                accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "dev/cross-encoder/ms-marco-MiniLM-L-12-v2",  type: keyword, url: *models, keyword: "cross-encoder/ms-marco-MiniLM-L-12-v2",  accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "dev/cross-encoder/ms-marco-TinyBERT-L-2-V2", type: keyword, url: *models, keyword: "cross-encoder/ms-marco-TinyBERT-L-2-V2", accepted_statuscodes: ["200-299"], interval: 60 }
+
+  statusPages:
+    - slug: "atlas"
+      title: "Atlas"
+      description: "Model serving status"
+      theme: "auto"
+      showPoweredBy: true
+      # logo: "https://mycompany.com/atlas.png"   # optional brand logo for this page
+      groups:
+        - name: "Other"
+          monitors:
+            - "Prefect Orchestration Health"
+        - name: "Endpoints"
+          monitors:
+            - "google/gemma-4-31B-it"
+            - "meta-llama/Llama-3.1-8B-Instruct"
+            - "meta-llama/Llama-3.2-11B-Vision-Instruct"
+            - "meta-llama/Llama-3.3-70B-Instruct"
+            - "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+            - "mistral/devstral-2-123B"
+            - "openai/gpt-oss-120b"
+        - name: "Embeddings"
+          monitors:
+            - "intfloat/multilingual-e5-large"
+            - "intfloat/multilingual-e5-small"
+            - "llmrails/ember-v1"
+        - name: "Cross Encoders"
+          monitors:
+            - "dev/BAAI/bge-reranker-v2-m3"
+            - "dev/cross-encoder/ms-marco-MiniLM-L-12-v2"
+            - "dev/cross-encoder/ms-marco-TinyBERT-L-2-V2"
