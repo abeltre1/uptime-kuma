@@ -1,16 +1,14 @@
-# Example: reproduce the "Atlas" model-serving status page — Prefect health plus
-# LLM endpoints, embeddings, and cross-encoders, grouped exactly as shown in the
-# dashboard — entirely from seed config (no clicking through the UI).
+# Example: reproduce the "Atlas" model-serving status page from seed config.
 #
-# Check strategy (the default here): each model is a KEYWORD monitor against an
-# OpenAI-compatible gateway's /v1/models, asserting that the model id is listed
-# (i.e. the model is being served). It's lightweight and reproduces per-model
-# rows. Swap in per-model URLs, or a POST inference check, if that fits better.
+# Each model is its OWN endpoint with its OWN URL. Every monitor is a simple
+# HTTP health check (GET <url>, expect 2xx) against that model's unique URL,
+# grouped into Other / Endpoints / Embeddings / Cross Encoders on /status/atlas.
 #
-# EDIT THESE before deploying (used by the YAML anchors below):
-#   - gateway that serves /v1/models : llm-gateway.apps.mycompany.com
-#   - Prefect server (/api/health)   : prefect.apps.mycompany.com
-# If /v1/models needs an API key, uncomment the `headers` lines.
+# >>> Replace every placeholder URL below with the real per-model URL. <<<
+# (The hosts here are just slugged guesses so each line is unique and easy to
+#  find-and-replace.) Adjust the path if your health endpoint isn't /health,
+#  or switch a monitor to type "keyword"/a POST check if a plain GET isn't
+#  enough. Add `headers: '{"Authorization": "Bearer ..."}'` if a URL needs auth.
 #
 # Usage:
 #   helm upgrade --install kuma ./helm/uptime-kuma -n monitoring --create-namespace \
@@ -24,51 +22,40 @@ route:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 
-# Set each endpoint once via an anchor. The leading-underscore key is ignored by
-# the chart; only the resolved monitor `url`s matter.
-_endpoints:
-  models: &models "https://llm-gateway.apps.mycompany.com/v1/models"
-  prefect: &prefect "https://prefect.apps.mycompany.com/api/health"
-
 seed:
   enabled: true
   adminUsername: "admin"
   adminPassword: "ChangeMe-Strong!23"   # override: --set seed.adminPassword=...  (or seed.existingAdminSecret)
 
+  # Shared defaults are applied by the seeder; each monitor just needs name + url.
   monitors:
     # --- Other ---
     - name: "Prefect Orchestration Health"
       type: "http"
-      url: *prefect
+      url: "https://prefect.apps.mycompany.com/api/health"
       accepted_statuscodes: ["200-299"]
       interval: 60
       maxretries: 2
       retryInterval: 60
 
-    # --- Endpoints (LLMs) ---
-    # keyword asserts the model id appears in the gateway's /v1/models response.
-    # Uncomment headers on any monitor if the gateway requires an API key:
-    #   headers: '{"Authorization": "Bearer YOUR_GATEWAY_API_KEY"}'
-    - { name: "google/gemma-4-31B-it",                     type: keyword, url: *models, keyword: "google/gemma-4-31B-it",                     accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "meta-llama/Llama-3.1-8B-Instruct",          type: keyword, url: *models, keyword: "meta-llama/Llama-3.1-8B-Instruct",          accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "meta-llama/Llama-3.2-11B-Vision-Instruct",  type: keyword, url: *models, keyword: "meta-llama/Llama-3.2-11B-Vision-Instruct",  accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "meta-llama/Llama-3.3-70B-Instruct",         type: keyword, url: *models, keyword: "meta-llama/Llama-3.3-70B-Instruct",         accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "meta-llama/Llama-4-Scout-17B-16E-Instruct", type: keyword, url: *models, keyword: "meta-llama/Llama-4-Scout-17B-16E-Instruct", accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "mistral/devstral-2-123B",                   type: keyword, url: *models, keyword: "mistral/devstral-2-123B",                   accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "openai/gpt-oss-120b",                       type: keyword, url: *models, keyword: "openai/gpt-oss-120b",                       accepted_statuscodes: ["200-299"], interval: 60 }
+    # --- Endpoints (LLMs) — one unique URL each ---
+    - { name: "google/gemma-4-31B-it",                     type: http, url: "https://gemma-4-31b-it.apps.mycompany.com/health",            accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "meta-llama/Llama-3.1-8B-Instruct",          type: http, url: "https://llama-3-1-8b-instruct.apps.mycompany.com/health",     accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "meta-llama/Llama-3.2-11B-Vision-Instruct",  type: http, url: "https://llama-3-2-11b-vision.apps.mycompany.com/health",      accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "meta-llama/Llama-3.3-70B-Instruct",         type: http, url: "https://llama-3-3-70b-instruct.apps.mycompany.com/health",    accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "meta-llama/Llama-4-Scout-17B-16E-Instruct", type: http, url: "https://llama-4-scout-17b.apps.mycompany.com/health",         accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "mistral/devstral-2-123B",                   type: http, url: "https://devstral-2-123b.apps.mycompany.com/health",           accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "openai/gpt-oss-120b",                       type: http, url: "https://gpt-oss-120b.apps.mycompany.com/health",              accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
 
     # --- Embeddings ---
-    - { name: "intfloat/multilingual-e5-large", type: keyword, url: *models, keyword: "intfloat/multilingual-e5-large", accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "intfloat/multilingual-e5-small", type: keyword, url: *models, keyword: "intfloat/multilingual-e5-small", accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "llmrails/ember-v1",              type: keyword, url: *models, keyword: "llmrails/ember-v1",              accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "intfloat/multilingual-e5-large", type: http, url: "https://multilingual-e5-large.apps.mycompany.com/health", accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "intfloat/multilingual-e5-small", type: http, url: "https://multilingual-e5-small.apps.mycompany.com/health", accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "llmrails/ember-v1",              type: http, url: "https://ember-v1.apps.mycompany.com/health",              accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
 
     # --- Cross Encoders (rerankers) ---
-    # NOTE: rerankers may be served by a different API (e.g. /rerank) rather than
-    # listed in /v1/models — adjust url/keyword to match your gateway. The keyword
-    # drops the "dev/" display prefix so it substring-matches the served id.
-    - { name: "dev/BAAI/bge-reranker-v2-m3",                type: keyword, url: *models, keyword: "BAAI/bge-reranker-v2-m3",                accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "dev/cross-encoder/ms-marco-MiniLM-L-12-v2",  type: keyword, url: *models, keyword: "cross-encoder/ms-marco-MiniLM-L-12-v2",  accepted_statuscodes: ["200-299"], interval: 60 }
-    - { name: "dev/cross-encoder/ms-marco-TinyBERT-L-2-V2", type: keyword, url: *models, keyword: "cross-encoder/ms-marco-TinyBERT-L-2-V2", accepted_statuscodes: ["200-299"], interval: 60 }
+    - { name: "dev/BAAI/bge-reranker-v2-m3",                type: http, url: "https://bge-reranker-v2-m3.apps.mycompany.com/health",       accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "dev/cross-encoder/ms-marco-MiniLM-L-12-v2",  type: http, url: "https://ms-marco-minilm-l-12-v2.apps.mycompany.com/health",  accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
+    - { name: "dev/cross-encoder/ms-marco-TinyBERT-L-2-V2", type: http, url: "https://ms-marco-tinybert-l-2-v2.apps.mycompany.com/health", accepted_statuscodes: ["200-299"], interval: 60, maxretries: 2 }
 
   statusPages:
     - slug: "atlas"
